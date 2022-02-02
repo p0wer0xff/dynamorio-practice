@@ -1,0 +1,8 @@
+cmake
+g++
+g++-multilib
+doxygen
+gdb
+git
+libunwind-dev
+zlib1g-dev
