@@ -1,4 +1,4 @@
 {
   "dockerFile": "Dockerfile",
-  "extensions": ["esbenp.prettier-vscode"]
+  "extensions": ["esbenp.prettier-vscode", "ms-vscode.cpptools"]
 }
