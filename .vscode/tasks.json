@@ -12,6 +12,14 @@
         "kind": "build",
         "isDefault": true
       }
+    },
+    {
+      "label": "Build DynamoRIO",
+      "type": "shell",
+      "command": "mkdir build_dr && cd build_dr && cmake ../dynamorio && make -j",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
     }
   ]
 }
