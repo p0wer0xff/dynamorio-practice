@@ -1,9 +1,19 @@
 set(sample_compile_options -O0 -no-pie)
+set(DynamoRIO_DIR build_dr/cmake)
+find_package(DynamoRIO)
+
 add_executable(sample_branches sample_programs/branches.c)
 target_compile_options(sample_branches PRIVATE ${sample_compile_options})
+
 add_executable(sample_calls sample_programs/calls.c)
 target_compile_options(sample_calls PRIVATE ${sample_compile_options})
+
 add_executable(sample_hello_world sample_programs/hello_world.c)
 target_compile_options(sample_hello_world PRIVATE ${sample_compile_options})
+
 add_executable(sample_loop sample_programs/loop.c)
 target_compile_options(sample_loop PRIVATE ${sample_compile_options})
+
+add_library(count_bb SHARED count_bb.c)
+configure_DynamoRIO_client(count_bb)
+use_DynamoRIO_extension(count_bb drmgr)
