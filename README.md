@@ -1,8 +1,12 @@
 # DynamoRIO Practice
 
+## Building
+
+Run the `Build DynamoRIO` task then the `Build` task in VSCode.
+
 ## Running
 
-In root directory:
+In the root directory run:
 
 ```bash
 build_dr/bin64/drrun -c build/libcount_bb.so -- build/sample_hello_world
@@ -14,4 +18,4 @@ build_dr/bin64/drrun -c build/libcount_bb.so -- build/sample_hello_world
 
 ### count_bb
 
-Print the number of unique basic blocks that are executed.
+Prints the number of unique basic blocks that are executed.
