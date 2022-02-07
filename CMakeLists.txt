@@ -22,3 +22,8 @@ add_library(count_bb_total SHARED count_bb_total.c)
 configure_DynamoRIO_client(count_bb_total)
 use_DynamoRIO_extension(count_bb_total drmgr)
 use_DynamoRIO_extension(count_bb_total drreg)
+
+add_library(count_bb_total_module SHARED count_bb_total_module.c modules.c)
+configure_DynamoRIO_client(count_bb_total_module)
+use_DynamoRIO_extension(count_bb_total_module drmgr)
+use_DynamoRIO_extension(count_bb_total_module drreg)
