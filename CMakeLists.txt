@@ -14,6 +14,9 @@ target_compile_options(sample_hello_world PRIVATE ${sample_compile_options})
 add_executable(sample_loop sample_programs/loop.c)
 target_compile_options(sample_loop PRIVATE ${sample_compile_options})
 
+add_executable(sample_detect sample_programs/detect.c)
+target_compile_options(sample_detect PRIVATE ${sample_compile_options})
+
 add_library(count_bb_unique SHARED count_bb_unique.c)
 configure_DynamoRIO_client(count_bb_unique)
 use_DynamoRIO_extension(count_bb_unique drmgr)
