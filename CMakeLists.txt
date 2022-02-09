@@ -30,3 +30,8 @@ add_library(count_bb_total_module SHARED count_bb_total_module.c modules.c)
 configure_DynamoRIO_client(count_bb_total_module)
 use_DynamoRIO_extension(count_bb_total_module drmgr)
 use_DynamoRIO_extension(count_bb_total_module drreg)
+
+add_library(edge_coverage SHARED edge_coverage.c modules.c)
+configure_DynamoRIO_client(edge_coverage)
+use_DynamoRIO_extension(edge_coverage drmgr)
+use_DynamoRIO_extension(edge_coverage drreg)
