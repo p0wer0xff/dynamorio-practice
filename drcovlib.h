@@ -140,6 +140,7 @@ typedef struct _bb_entry_t {
     uint start; /* offset of bb start from the image base */
     ushort size;
     ushort mod_id;
+    uint hits_since_last_reset; //CSA modification
 } bb_entry_t;
 
 /***************************************************************************
@@ -392,6 +393,10 @@ drmodtrack_add_custom_data(void *(*load_cb)(module_data_t *module),
                            void (*free_cb)(void *data));
 
 /*@}*/ /* end doxygen group */
+
+//Defined by CSA
+DR_EXPORT drcovlib_status_t reset_coverage(void);
+DR_EXPORT drcovlib_status_t dump_current_coverage(void);
 
 #ifdef __cplusplus
 }
