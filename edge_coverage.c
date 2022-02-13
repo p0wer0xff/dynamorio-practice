@@ -70,9 +70,8 @@ static void
 event_thread_init(void *drcontext)
 {
     void **thread_data;
-    thread_data = (void **)dr_thread_alloc(drcontext, 2 * sizeof(void *));
-    thread_data[0] = 0;
-    thread_data[1] = afl_area;
+    thread_data = (void **)dr_thread_alloc(drcontext, sizeof(void *));
+    *thread_data = 0;
     drmgr_set_tls_field(drcontext, tls_field, thread_data);
 }
 
