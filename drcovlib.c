@@ -385,16 +385,16 @@ static dr_emit_flags_t
 event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
                 bool for_trace, bool translating, void *user_data)
 {
-    // Initialization
-    size_t naked_addr;
-    reg_id_t, reg1, reg2;
-    opnd_t opnd1, opnd2, opnd3;
-    instr_t *new_instr;
-
     if (!drmgr_is_first_instr(drcontext, inst))
         return DR_EMIT_DEFAULT;
 
 #if defined(AARCH64) || defined(ARM)
+    // Initialization
+    size_t naked_addr;
+    reg_id_t reg1, reg2;
+    opnd_t opnd1, opnd2, opnd3;
+    instr_t *new_instr;
+
     // Save registers
     drreg_reserve_aflags(drcontext, bb, inst);
     drreg_reserve_register(drcontext, bb, inst, NULL, &reg1);
@@ -466,6 +466,10 @@ event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
     drreg_unreserve_aflags(drcontext, bb, inst);
 
 #else
+    // Initialization
+    opnd_t opnd1;
+    instr_t *new_instr;
+
     // Increment for x86
     drreg_reserve_aflags(drcontext, bb, inst);
     opnd1 = OPND_CREATE_ABSMEM(&(((bb_entry_t *)user_data)->hits_since_last_reset), OPSZ_4);
