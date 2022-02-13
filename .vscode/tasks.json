@@ -4,7 +4,7 @@
     {
       "label": "Build",
       "type": "shell",
-      "command": "cmake -S . -B build && cmake --build build",
+      "command": "mkdir -p build && cd build && cmake .. && make",
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -16,7 +16,7 @@
     {
       "label": "Build DynamoRIO",
       "type": "shell",
-      "command": "mkdir build_dr && cd build_dr && cmake ../dynamorio && make -j",
+      "command": "mkdir -p build_dr && cd build_dr && cmake ../dynamorio && make -j",
       "options": {
         "cwd": "${workspaceFolder}"
       }
