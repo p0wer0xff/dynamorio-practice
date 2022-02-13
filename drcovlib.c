@@ -52,7 +52,7 @@
 
 #include "dr_api.h"
 #include "drmgr.h"
-#include "drreg.h"
+#include "drreg.h" // drMultiCov - include drreg
 #include "drx.h"
 #include "drcovlib.h"
 #include "hashtable.h"
@@ -126,10 +126,11 @@ bb_table_entry_print(ptr_uint_t idx, void *entry, void *iter_data)
 {
     per_thread_t *data = iter_data;
     bb_entry_t *bb_entry = (bb_entry_t *)entry;
-    if (bb_entry->hits_since_last_reset != 0){ //CSA add this if
-    dr_fprintf(data->log, "module[%3u]: " PFX ", %3u", bb_entry->mod_id, bb_entry->start,
-               bb_entry->size);
-    dr_fprintf(data->log, "\n");
+    if (bb_entry->hits_since_last_reset != 0) // drMultiCov - add if statement
+    {
+        dr_fprintf(data->log, "module[%3u]: " PFX ", %3u", bb_entry->mod_id, bb_entry->start,
+                   bb_entry->size);
+        dr_fprintf(data->log, "\n");
     }
     return true; /* continue iteration */
 }
@@ -150,7 +151,7 @@ bb_table_print(void *drcontext, per_thread_t *data)
         drtable_dump_entries(data->bb_table, data->log);
 }
 
-static bb_entry_t * //CSA change return type
+static bb_entry_t * // drMultiCov - change return type
 bb_table_entry_add(void *drcontext, per_thread_t *data, app_pc start, uint size)
 {
     bb_entry_t *bb_entry = drtable_alloc(data->bb_table, 1, NULL);
@@ -160,7 +161,7 @@ bb_table_entry_add(void *drcontext, per_thread_t *data, app_pc start, uint size)
     /* we do not de-duplicate repeated bbs */
     ASSERT(size < USHRT_MAX, "size overflow");
     bb_entry->size = (ushort)size;
-    bb_entry->hits_since_last_reset = 0; //CSA init to zero
+    bb_entry->hits_since_last_reset = 0; // drMultiCov - initialize to 0
     if (res == DRCOVLIB_SUCCESS) {
         ASSERT(mod_id < USHRT_MAX, "module id overflow");
         bb_entry->mod_id = (ushort)mod_id;
@@ -175,7 +176,7 @@ bb_table_entry_add(void *drcontext, per_thread_t *data, app_pc start, uint size)
         bb_entry->mod_id = UNKNOWN_MODULE_ID;
         bb_entry->start = (uint)(ptr_uint_t)start;
     }
-    return bb_entry; //csa return pointer to the newly allocated entry
+    return bb_entry; // drMultiCov - return pointer to the newly allocated entry
 }
 
 #define INIT_BB_TABLE_ENTRIES 4096
@@ -370,7 +371,7 @@ event_basic_block_analysis(void *drcontext, void *tag, instrlist_t *bb, bool for
      * 4. The duplication can be easily handled in a post-processing step,
      *    which is required anyway.
      */
-    *user_data = (void *)bb_table_entry_add(drcontext, data, tag_pc, (uint)(end_pc - start_pc)); //CSA set user data
+    *user_data = (void *)bb_table_entry_add(drcontext, data, tag_pc, (uint)(end_pc - start_pc)); // drMultiCov - set user_data
 
     if (go_native)
         return DR_EMIT_GO_NATIVE;
@@ -378,126 +379,103 @@ event_basic_block_analysis(void *drcontext, void *tag, instrlist_t *bb, bool for
         return DR_EMIT_DEFAULT;
 }
 
-//CSA created
-//inspired by https://github.com/firodj/bbtrace/blob/master/clients/bbtrace.c, http://dynamorio.org/docs/samples/bbcount.c and winafl.c
-//static byte buf[8192];
-static dr_emit_flags_t event_bb_insert(void *drcontext, void *tag,
-	instrlist_t *bb, instr_t *instr, bool for_trace, bool translating, void *user_data)
+// drMultiCov - new function
+// Inspired by https://github.com/firodj/bbtrace/blob/master/clients/bbtrace.c, http://dynamorio.org/docs/samples/bbcount.c, and https://github.com/googleprojectzero/winafl/blob/master/winafl.c
+static dr_emit_flags_t
+event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
+                bool for_trace, bool translating, void *user_data)
 {
-	if (!drmgr_is_first_instr(drcontext, instr))
-		return DR_EMIT_DEFAULT;
+    // Initialization
+    size_t naked_addr;
+    reg_id_t, reg1, reg2;
+    opnd_t opnd1, opnd2, opnd3;
+    instr_t *new_instr;
 
-	//insert an increment operation
+    if (!drmgr_is_first_instr(drcontext, inst))
+        return DR_EMIT_DEFAULT;
+
 #if defined(AARCH64) || defined(ARM)
+    // Save registers
+    drreg_reserve_aflags(drcontext, bb, inst);
+    drreg_reserve_register(drcontext, bb, inst, NULL, &reg1);
+    drreg_reserve_register(drcontext, bb, inst, NULL, &reg2);
 
-	reg_id_t reg_1 = 0, reg_2 = 0;
-	// for (int i = 0; i < 20; i++) {
-	// 	buf[i] = 0;
-	// }
-	//NOTIFY(0, "nulltes FLUUUFIIII%s\n", "");
-
-	//Save registers
-	drreg_reserve_aflags(drcontext, bb, instr);
-	drreg_reserve_register(drcontext, bb, instr, NULL, &reg_1);
-	drreg_reserve_register(drcontext, bb, instr, NULL, &reg_2);
-	
-	//load
-	size_t naked_addr = (size_t)&(((bb_entry_t*)user_data)->hits_since_last_reset);
+    // Get address to increment
+    naked_addr = (size_t) & (((bb_entry_t *)user_data)->hits_since_last_reset);
 
 #if defined(ARM)
-	instr_t* instructions[] = {NULL, NULL, NULL, NULL, NULL};
-	size_t instructions_len = sizeof(instructions)/sizeof(instructions[0]);
-	// load high
-	instructions[0] = INSTR_CREATE_movw(drcontext,
-			opnd_create_reg(reg_1),
-			OPND_CREATE_INT16(naked_addr & 0xFFFF)
-			);
+    // Load high
+    opnd1 = opnd_create_reg(reg1);
+    opnd2 = OPND_CREATE_INT16(naked_addr & 0xFFFF);
+    new_instr = INSTR_CREATE_movw(drcontext, opnd1, opnd2);
+    instrlist_meta_preinsert(bb, inst, new_instr);
 
-	// load low
-	instructions[1] = INSTR_CREATE_movt(drcontext,
-			opnd_create_reg(reg_1),
-			OPND_CREATE_INT16((naked_addr>>16) & 0xFFFF)
-			);
-#else 
-	instr_t* instructions[] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL};
-	size_t instructions_len = sizeof(instructions)/sizeof(instructions[0]);
-	// load 
-	instructions[0] = INSTR_CREATE_movk(drcontext,
-			opnd_create_reg(reg_1),
-			OPND_CREATE_INT16((naked_addr>>0) & 0xFFFF),
-			OPND_CREATE_INT8(0)
-			);
-	instructions[1] = INSTR_CREATE_movk(drcontext,
-			opnd_create_reg(reg_1),
-			OPND_CREATE_INT16((naked_addr>>16) & 0xFFFF),
-			OPND_CREATE_INT8(16)
-			);
-	instructions[2] = INSTR_CREATE_movk(drcontext,
-			opnd_create_reg(reg_1),
-			OPND_CREATE_INT16((naked_addr>>32) & 0xFFFF),
-			OPND_CREATE_INT8(32)
-			);
-	instructions[3] = INSTR_CREATE_movk(drcontext,
-			opnd_create_reg(reg_1),
-			OPND_CREATE_INT16((naked_addr>>48) & 0xFFFF),
-			OPND_CREATE_INT8(48)
-			);
+    // Load low
+    opnd1 = opnd_create_reg(reg1);
+    opnd2 = OPND_CREATE_INT16((naked_addr >> 16) & 0xFFFF);
+    new_instr = INSTR_CREATE_movt(drcontext, opnd1, opnd2);
+    instrlist_meta_preinsert(bb, inst, new_instr);
+#else
+    // Load
+    opnd1 = opnd_create_reg(reg1);
+    opnd2 = OPND_CREATE_INT16((naked_addr >> 0) & 0xFFFF);
+    opnd3 = OPND_CREATE_INT8(0);
+    new_instr = INSTR_CREATE_movk(drcontext, opnd1, opnd2, opnd3);
+    instrlist_meta_preinsert(bb, inst, new_instr);
+
+    opnd1 = opnd_create_reg(reg1);
+    opnd2 = OPND_CREATE_INT16((naked_addr >> 16) & 0xFFFF);
+    opnd3 = OPND_CREATE_INT8(16);
+    new_instr = INSTR_CREATE_movk(drcontext, opnd1, opnd2, opnd3);
+    instrlist_meta_preinsert(bb, inst, new_instr);
+
+    opnd1 = opnd_create_reg(reg1);
+    opnd2 = OPND_CREATE_INT16((naked_addr >> 32) & 0xFFFF);
+    opnd3 = OPND_CREATE_INT8(32);
+    new_instr = INSTR_CREATE_movk(drcontext, opnd1, opnd2, opnd3);
+    instrlist_meta_preinsert(bb, inst, new_instr);
+
+    opnd1 = opnd_create_reg(reg1);
+    opnd2 = OPND_CREATE_INT16((naked_addr >> 48) & 0xFFFF);
+    opnd3 = OPND_CREATE_INT8(48);
+    new_instr = INSTR_CREATE_movk(drcontext, opnd1, opnd2, opnd3);
+    instrlist_meta_preinsert(bb, inst, new_instr);
 #endif
+    // Dereference
+    opnd1 = opnd_create_reg(reg2);
+    opnd2 = OPND_CREATE_MEM32(reg1, 0);
+    new_instr = INSTR_CREATE_ldr(drcontext, opnd1, opnd2);
+    instrlist_meta_preinsert(bb, inst, new_instr);
 
-	// deref
-	instructions[instructions_len-3] = INSTR_CREATE_ldr(drcontext,
-			opnd_create_reg(reg_2),
-			OPND_CREATE_MEM32(reg_1, 0)
-			);
+    // Increment
+    opnd1 = opnd_create_reg(reg2);
+    opnd2 = opnd_create_reg(reg2);
+    opnd3 = OPND_CREATE_INT(1));
+    new_instr = INSTR_CREATE_add(drcontext, opnd1, opnd2, opnd3);
+    instrlist_meta_preinsert(bb, inst, new_instr);
 
-	//Inc
-	instructions[instructions_len-2] = INSTR_CREATE_add(drcontext,
-			opnd_create_reg(reg_2),
-			opnd_create_reg(reg_2),
-			OPND_CREATE_INT(1));
+    // Store
+    opnd1 = OPND_CREATE_MEM32(reg1, 0);
+    opnd2 = opnd_create_reg(reg2);
+    new_instr = INSTR_CREATE_str(drcontext, opnd1, opnd2);
+    instrlist_meta_preinsert(bb, inst, new_instr);
 
-	// store
-		instructions[instructions_len-1] = INSTR_CREATE_str(drcontext,
-			OPND_CREATE_MEM32(reg_1, 0),
-			opnd_create_reg(reg_2)
-			);
-
-	for (int i = 0; i < 5; i++) {
-		//instr_encode(drcontext, instructions[i], buf+4*i);
-		instrlist_meta_preinsert(bb, instr, instructions[i]);
-	}
-	//NOTIFY(0, "FLUFFI instructions: %s\n", "");
-	// for (int i = 0; i < 20; i++) {
-	// 	NOTIFY(0, "%0x ", buf[i]);
-	// 	buf[i] = 0;
-	// }
-	//NOTIFY(0, "%s", "\n");
-
-	// opnd_create_rel_addr((void *)&buf[128], OPSZ_PTR)
-	//opnd_create_rel_addr((void*)&(((bb_entry_t*)user_data)->hits_since_last_reset), OPSZ_PTR)
-	//OPND_CREATE_ABSMEM((void*)&(((bb_entry_t*)user_data)->hits_since_last_reset), OPSZ_4)
-	// opnd_create_rel_addr((void *)&buf[128], OPSZ_PTR)
-	//opnd_create_rel_addr((void*)&(((bb_entry_t*)user_data)->hits_since_last_reset), OPSZ_PTR)
-	//OPND_CREATE_ABSMEM((void*)&(((bb_entry_t*)user_data)->hits_since_last_reset), OPSZ_4)
-
-	drreg_unreserve_register(drcontext, bb, instr, reg_2);
-	drreg_unreserve_register(drcontext, bb, instr, reg_1);
-	drreg_unreserve_aflags(drcontext, bb, instr);
-	//NOTIFY(0, "drittes FLUUUFIIII%s\n", "");
+    // Restore registers
+    drreg_unreserve_register(drcontext, bb, inst, reg2);
+    drreg_unreserve_register(drcontext, bb, inst, reg1);
+    drreg_unreserve_aflags(drcontext, bb, inst);
 
 #else
-	drreg_reserve_aflags(drcontext, bb, instr);
-
-	instrlist_meta_preinsert(bb, instr,
-		INSTR_CREATE_inc(drcontext,
-		OPND_CREATE_ABSMEM(&(((bb_entry_t*)user_data)->hits_since_last_reset)
-		, OPSZ_4)));
-
-	drreg_unreserve_aflags(drcontext, bb, instr);
-
+    // Increment for x86
+    drreg_reserve_aflags(drcontext, bb, inst);
+    opnd1 = OPND_CREATE_ABSMEM(&(((bb_entry_t *)user_data)->hits_since_last_reset), OPSZ_4);
+    new_instr = INSTR_CREATE_inc(drcontext, opnd1);
+    instrlist_meta_preinsert(bb, inst, new_instr);
+    drreg_unreserve_aflags(drcontext, bb, inst);
+    
 #endif
 
-	return DR_EMIT_DEFAULT;
+    return DR_EMIT_DEFAULT;
 }
 
 static void
@@ -702,7 +680,7 @@ drcovlib_init(drcovlib_options_t *ops)
 
     drmgr_register_thread_init_event(event_thread_init);
     drmgr_register_thread_exit_event(event_thread_exit);
-    drmgr_register_bb_instrumentation_event(event_basic_block_analysis, event_bb_insert, NULL); //CSA add modification function
+    drmgr_register_bb_instrumentation_event(event_basic_block_analysis, event_bb_insert, NULL); // drMultiCov - add instrumentation function
     dr_register_filter_syscall_event(event_filter_syscall);
     drmgr_register_pre_syscall_event(event_pre_syscall);
 #ifdef UNIX
@@ -716,80 +694,84 @@ drcovlib_init(drcovlib_options_t *ops)
     return event_init();
 }
 
-//CSA created
+// drMultiCov - new function
 static bool
 bb_table_entry_clear_hits(ptr_uint_t idx, void *entry, void *iter_data)
 {
-	bb_entry_t *bb_entry = (bb_entry_t *)entry;
-	bb_entry->hits_since_last_reset = 0;
+    bb_entry_t *bb_entry = (bb_entry_t *)entry;
+    bb_entry->hits_since_last_reset = 0;
 
-	return true;
+    return true;
 }
 
-
-//CSA created
+// drMultiCov - new function
 drcovlib_status_t
 reset_coverage(void)
 {
-	void **drcontexts = NULL;
-	uint num_threads, i;
-	if (dr_suspend_all_other_threads_ex(&drcontexts, &num_threads, NULL, DR_SUSPEND_NATIVE)) {
-		NOTIFY(1, "suspended %d threads\n", num_threads);
+    void **drcontexts = NULL;
+    uint num_threads, i;
+    if (dr_suspend_all_other_threads_ex(&drcontexts, &num_threads, NULL, DR_SUSPEND_NATIVE))
+    {
+        NOTIFY(1, "suspended %d threads\n", num_threads);
+        if (!drcov_per_thread)
+        {
+            drtable_iterate(global_data->bb_table, global_data, bb_table_entry_clear_hits);
+        }
+        else
+        {
+            for (i = 0; i < num_threads; i++)
+            {
+                per_thread_t *data = (per_thread_t *)drmgr_get_tls_field(drcontexts[i], tls_idx);
+                drtable_iterate(data->bb_table, data, bb_table_entry_clear_hits);
+            }
+        }
+        if (!dr_resume_all_other_threads(drcontexts, num_threads))
+        {
+            ASSERT(false, "failed to resume threads");
+        }
+    }
+    else
+    {
+        ASSERT(false, "failed to suspend threads");
+    }
 
-		if (!drcov_per_thread){
-			drtable_iterate(global_data->bb_table, global_data, bb_table_entry_clear_hits);
-		}
-		else{
-			for (i = 0; i < num_threads; i++) {
-				per_thread_t *data = (per_thread_t *)drmgr_get_tls_field(drcontexts[i], tls_idx);
-				drtable_iterate(data->bb_table, data, bb_table_entry_clear_hits);
-			}
-		}
-
-		if (!dr_resume_all_other_threads(drcontexts, num_threads)) {
-			ASSERT(false, "failed to resume threads");
-		}
-	}
-	else {
-		ASSERT(false, "failed to suspend threads");
-	}
-
-	return DRCOVLIB_SUCCESS;
+    return DRCOVLIB_SUCCESS;
 }
 
-//CSA created
+// drMultiCov - new function
 drcovlib_status_t
 dump_current_coverage(void)
 {
-	void **drcontexts = NULL;
-	uint num_threads, i;
-	if (dr_suspend_all_other_threads_ex(&drcontexts, &num_threads, NULL, DR_SUSPEND_NATIVE)) {
-		NOTIFY(1, "suspended %d threads\n", num_threads);
+    void **drcontexts = NULL;
+    uint num_threads, i;
+    if (dr_suspend_all_other_threads_ex(&drcontexts, &num_threads, NULL, DR_SUSPEND_NATIVE))
+    {
+        NOTIFY(1, "suspended %d threads\n", num_threads);
+        if (!drcov_per_thread)
+        {
+            dump_drcov_data(NULL, global_data);
+            dr_close_file(global_data->log);
+            log_file_create(NULL, global_data);
+        }
+        else
+        {
+            for (i = 0; i < num_threads; i++)
+            {
+                per_thread_t *data = (per_thread_t *)drmgr_get_tls_field(drcontexts[i], tls_idx);
+                dump_drcov_data(drcontexts[i], data);
+                dr_close_file(data->log);
+                log_file_create(drcontexts[i], data);
+            }
+        }
+        if (!dr_resume_all_other_threads(drcontexts, num_threads))
+        {
+            ASSERT(false, "failed to resume threads");
+        }
+    }
+    else
+    {
+        ASSERT(false, "failed to suspend threads");
+    }
 
-		if (!drcov_per_thread){
-			dump_drcov_data(NULL, global_data);
-
-			dr_close_file(global_data->log);
-			log_file_create(NULL, global_data);
-		}
-		else{
-			for (i = 0; i < num_threads; i++) {
-				per_thread_t *data = (per_thread_t *)drmgr_get_tls_field(drcontexts[i], tls_idx);
-				dump_drcov_data(drcontexts[i], data);
-
-				dr_close_file(data->log);
-				log_file_create(drcontexts[i], data);
-			}
-		}
-
-		if (!dr_resume_all_other_threads(drcontexts, num_threads)) {
-			ASSERT(false, "failed to resume threads");
-		}
-	}
-	else {
-		ASSERT(false, "failed to suspend threads");
-	}
-
-	return DRCOVLIB_SUCCESS;
+    return DRCOVLIB_SUCCESS;
 }
-
