@@ -80,7 +80,7 @@ static void
 event_thread_exit(void *drcontext)
 {
     void *data = drmgr_get_tls_field(drcontext, tls_field);
-    dr_thread_free(drcontext, data, 2 * sizeof(void *));
+    dr_thread_free(drcontext, data, sizeof(void *));
 }
 
 // Called when loading module

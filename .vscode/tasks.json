@@ -16,7 +16,7 @@
     {
       "label": "Build DynamoRIO",
       "type": "shell",
-      "command": "cp drcovlib.* dynamorio/ext/drcovlib/ && cp drcov.c dynamorio/clients/drcov/ && mkdir -p build_dr && cd build_dr && cmake ../dynamorio && make -j",
+      "command": "cp drcov_edge_coverage/xxhash.h drcov_edge_coverage/drcovlib.* drcov_edge_coverage/modules.c dynamorio/ext/drcovlib/ && cp drcov_edge_coverage/drcov.c dynamorio/clients/drcov/ && mkdir -p build_dr && cd build_dr && cmake ../dynamorio && make -j",
       "options": {
         "cwd": "${workspaceFolder}"
       }

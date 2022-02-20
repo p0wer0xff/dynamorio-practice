@@ -102,7 +102,29 @@ typedef struct _drcovlib_options_t {
      * option, is created.  This option only works under Windows.
      */
     int native_until_thread;
+
+    // Edge coverage - add target module member
+    const char *target_module;
 } drcovlib_options_t;
+
+// Edge coverage - move module_entry_t definition from modules.c to drcovlib.h
+typedef struct _module_entry_t {
+    uint id;
+    uint containing_id;
+    bool unload; /* if the module is unloaded */
+    /* The bounds of the segment, or whole module if it's contiguous. */
+    app_pc start;
+    app_pc end;
+    /* A copy of the data.  Segments of non-contiguous modules all share
+     * the same data pointer.
+     */
+    module_data_t *data;
+    void *custom;
+#ifndef WINDOWS
+    /* The file offset of the segment */
+    uint64 offset;
+#endif
+} module_entry_t;
 
 /***************************************************************************
  * Coverage log file format for use in postprocessing.
@@ -272,6 +294,12 @@ DR_EXPORT
  */
 drcovlib_status_t
 drmodtrack_init(void);
+
+
+// Edge coverage - add prototype for drmodtrack_lookup_data
+DR_EXPORT
+drcovlib_status_t
+drmodtrack_lookup_data(void *drcontext, app_pc pc, OUT uint *mod_index, OUT app_pc *mod_base, OUT module_entry_t **mod_entry);
 
 DR_EXPORT
 /**

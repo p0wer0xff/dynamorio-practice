@@ -56,11 +56,17 @@
 #include "drx.h"
 #include "drcovlib.h"
 #include "hashtable.h"
-#include "drtable.h"
-#include "modules.h"
+#include "drtable.h" // Edge coverage - remove unnecessary modules.h include
 #include "drcovlib_private.h"
 #include <limits.h>
 #include <string.h>
+
+// Edge coverage - includes for hashing and constants
+#include <stdint.h>
+#define XXH_INLINE_ALL
+#include "xxhash.h"
+#undef XXH_INLINE_ALL
+#define EDGE_COVERAGE_MAP_SIZE 65536
 
 #define UNKNOWN_MODULE_ID USHRT_MAX
 
@@ -86,6 +92,18 @@ static int sysnum_execve = IF_X64_ELSE(59, 11);
 static volatile bool go_native;
 static int tls_idx = -1;
 static int drcovlib_init_count;
+
+// Edge coverage - new globals
+static const char *target_module;
+static unsigned char *edge_coverage_area;
+static int edge_coverage_tls = -1;
+
+// Edge coverage - add inline hash function
+static inline uint64_t
+hash64(uint8_t *key, uint32_t len)
+{
+    return XXH3_64bits(key, len);
+}
 
 /****************************************************************************
  * Utility Functions
@@ -220,6 +238,11 @@ dump_drcov_data(void *drcontext, per_thread_t *data)
         return;
     }
     version_print(data->log);
+
+    // Edge coverage - print hash to log
+    uint64_t hash = hash64(edge_coverage_area, EDGE_COVERAGE_MAP_SIZE);
+    dr_fprintf(data->log, "Edge Coverage Hash: %lx\n", hash);
+
     drmodtrack_dump(data->log);
     bb_table_print(drcontext, data);
 }
@@ -388,6 +411,9 @@ event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
     if (!drmgr_is_first_instr(drcontext, inst))
         return DR_EMIT_DEFAULT;
 
+    // Needed to ensure instrumention unconditionally executes
+    drmgr_disable_auto_predication(drcontext, bb);
+
 #if defined(AARCH64) || defined(ARM)
     // Initialization
     size_t naked_addr;
@@ -467,16 +493,88 @@ event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
 
 #else
     // Initialization
-    opnd_t opnd1;
+    bool edge_coverage;
+    app_pc start_pc, mod_start;
+    module_entry_t *mod_entry;
+    uint mod_id, offset;
+    const char *mod_name;
+    reg_id_t reg, reg2, reg3;
+    opnd_t opnd1, opnd2;
     instr_t *new_instr;
 
-    // Increment for x86
+    // Check module name
+    edge_coverage = false;
+    start_pc = dr_fragment_app_pc(tag);
+    drcovlib_status_t res = drmodtrack_lookup_data(drcontext, start_pc, &mod_id, &mod_start, &mod_entry);
+    if (res == DRCOVLIB_SUCCESS)
+    {
+        mod_name = dr_module_preferred_name(mod_entry->data);
+        if (strcasecmp(mod_name, target_module) == 0)
+        {
+            edge_coverage = true;
+        }
+    }
+
+    // Reserve registers
     drreg_reserve_aflags(drcontext, bb, inst);
+    if (edge_coverage)
+    {
+        drreg_reserve_register(drcontext, bb, inst, NULL, &reg);
+        drreg_reserve_register(drcontext, bb, inst, NULL, &reg2);
+        drreg_reserve_register(drcontext, bb, inst, NULL, &reg3);
+
+        // Get BB offset
+        offset = (uint)(start_pc - mod_start);
+        offset &= EDGE_COVERAGE_MAP_SIZE - 1;
+
+        // Load pointer to previous offset into reg3
+        drmgr_insert_read_tls_field(drcontext, edge_coverage_tls, bb, inst, reg3);
+
+        // Load pointer to shared memory into reg2
+        opnd1 = opnd_create_reg(reg2);
+        opnd2 = OPND_CREATE_INTPTR((uint64)edge_coverage_area);
+        new_instr = INSTR_CREATE_mov_imm(drcontext, opnd1, opnd2);
+        instrlist_meta_preinsert(bb, inst, new_instr);
+
+        // Load previous offset into reg
+        opnd1 = opnd_create_reg(reg);
+        opnd2 = OPND_CREATE_MEMPTR(reg3, 0);
+        new_instr = INSTR_CREATE_mov_ld(drcontext, opnd1, opnd2);
+        instrlist_meta_preinsert(bb, inst, new_instr);
+
+        // XOR reg (previous offset) with the new offset
+        opnd1 = opnd_create_reg(reg);
+        opnd2 = OPND_CREATE_INT32(offset);
+        new_instr = INSTR_CREATE_xor(drcontext, opnd1, opnd2);
+        instrlist_meta_preinsert(bb, inst, new_instr);
+
+        // Increment the counter in shared memory
+        opnd1 = opnd_create_base_disp(reg2, reg, 1, 0, OPSZ_1);
+        new_instr = INSTR_CREATE_inc(drcontext, opnd1);
+        instrlist_meta_preinsert(bb, inst, new_instr);
+
+        // Store the new offset
+        offset = (offset >> 1) & (EDGE_COVERAGE_MAP_SIZE - 1);
+        opnd1 = OPND_CREATE_MEMPTR(reg3, 0);
+        opnd2 = OPND_CREATE_INT32(offset);
+        new_instr = INSTR_CREATE_mov_st(drcontext, opnd1, opnd2);
+        instrlist_meta_preinsert(bb, inst, new_instr);
+    }
+
+    // Increment for drMultiCov
     opnd1 = OPND_CREATE_ABSMEM(&(((bb_entry_t *)user_data)->hits_since_last_reset), OPSZ_4);
     new_instr = INSTR_CREATE_inc(drcontext, opnd1);
     instrlist_meta_preinsert(bb, inst, new_instr);
+
+    // Unreserve registers
+    if (edge_coverage)
+    {
+        drreg_unreserve_register(drcontext, bb, inst, reg3);
+        drreg_unreserve_register(drcontext, bb, inst, reg2);
+        drreg_unreserve_register(drcontext, bb, inst, reg);
+    }
     drreg_unreserve_aflags(drcontext, bb, inst);
-    
+
 #endif
 
     return DR_EMIT_DEFAULT;
@@ -497,6 +595,10 @@ event_thread_exit(void *drcontext)
         /* the per-thread data is a copy of global data */
         dr_thread_free(drcontext, data, sizeof(*data));
     }
+
+    // Edge coverage - free TLS field
+    void *thread_data = drmgr_get_tls_field(drcontext, edge_coverage_tls);
+    dr_thread_free(drcontext, thread_data, 2 * sizeof(void *));
 }
 
 static void
@@ -542,6 +644,11 @@ event_thread_init(void *drcontext)
     else
         data = thread_data_copy(drcontext);
     drmgr_set_tls_field(drcontext, tls_idx, data);
+
+    // Edge coverage - allocate TLS field
+    void **thread_data = (void **)dr_thread_alloc(drcontext, sizeof(void *));
+    *thread_data = 0;
+    drmgr_set_tls_field(drcontext, edge_coverage_tls, thread_data);
 }
 
 #ifndef WINDOWS
@@ -614,6 +721,11 @@ drcovlib_exit(void)
 
     drmgr_unregister_tls_field(tls_idx);
 
+    // Edge coverage - free resources
+    drmgr_unregister_tls_field(edge_coverage_tls);
+    dr_global_free(edge_coverage_area, EDGE_COVERAGE_MAP_SIZE);
+    drreg_exit();
+
     drx_exit();
     drmgr_exit();
 
@@ -673,6 +785,22 @@ drcovlib_init(drcovlib_options_t *ops)
 
     drmgr_init();
     drx_init();
+
+    // Edge coverage - drreg initialization
+    drreg_options_t drreg_ops = {sizeof(drreg_ops), 2 /*max slots needed: aflags*/, false};
+    drreg_init(&drreg_ops);
+
+    // Edge coverage - TLS initialization
+    edge_coverage_tls = drmgr_register_tls_field();
+    if (edge_coverage_tls == -1)
+        return DRCOVLIB_ERROR;
+    
+    // Edge coverage - global area initialization
+    edge_coverage_area = (unsigned char *)dr_global_alloc(EDGE_COVERAGE_MAP_SIZE);
+    memset(edge_coverage_area, 0, EDGE_COVERAGE_MAP_SIZE);
+
+    // Edge coverage - set target module
+    target_module = ops->target_module;
 
     /* We follow a simple model of the caller requesting the coverage dump,
      * either via calling the exit routine, using its own soft_kills nudge, or

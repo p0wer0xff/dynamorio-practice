@@ -157,6 +157,10 @@ options_init(client_id_t id, int argc, const char *argv[], drcovlib_options_t *o
             if (dr_sscanf(token, "%u", &verbose) != 1) {
                 USAGE_CHECK(false, "invalid -verbose number");
             }
+        // Edge coverage - add target module option
+        } else if (strcmp(token, "-target_module") == 0) {
+            USAGE_CHECK((i + 1) < argc, "missing target module name");
+            ops->target_module = argv[++i];
         } else {
             NOTIFY(0, "UNRECOGNIZED OPTION: \"%s\"\n", token);
             USAGE_CHECK(false, "invalid option");
