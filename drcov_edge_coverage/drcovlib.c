@@ -504,14 +504,17 @@ event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
 
     // Check module name
     edge_coverage = false;
-    start_pc = dr_fragment_app_pc(tag);
-    drcovlib_status_t res = drmodtrack_lookup_data(drcontext, start_pc, &mod_id, &mod_start, &mod_entry);
-    if (res == DRCOVLIB_SUCCESS)
+    if (target_module != NULL)
     {
-        mod_name = dr_module_preferred_name(mod_entry->data);
-        if (strcasecmp(mod_name, target_module) == 0)
+        start_pc = dr_fragment_app_pc(tag);
+        drcovlib_status_t res = drmodtrack_lookup_data(drcontext, start_pc, &mod_id, &mod_start, &mod_entry);
+        if (res == DRCOVLIB_SUCCESS)
         {
-            edge_coverage = true;
+            mod_name = dr_module_preferred_name(mod_entry->data);
+            if (strcasecmp(mod_name, target_module) == 0)
+            {
+                edge_coverage = true;
+            }
         }
     }
 

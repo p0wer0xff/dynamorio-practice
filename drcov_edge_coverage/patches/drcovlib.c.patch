@@ -106,7 +106,7 @@
  
      if (go_native)
          return DR_EMIT_GO_NATIVE;
-@@ -373,6 +402,184 @@
+@@ -373,6 +402,187 @@
          return DR_EMIT_DEFAULT;
  }
  
@@ -212,14 +212,17 @@
 +
 +    // Check module name
 +    edge_coverage = false;
-+    start_pc = dr_fragment_app_pc(tag);
-+    drcovlib_status_t res = drmodtrack_lookup_data(drcontext, start_pc, &mod_id, &mod_start, &mod_entry);
-+    if (res == DRCOVLIB_SUCCESS)
++    if (target_module != NULL)
 +    {
-+        mod_name = dr_module_preferred_name(mod_entry->data);
-+        if (strcasecmp(mod_name, target_module) == 0)
++        start_pc = dr_fragment_app_pc(tag);
++        drcovlib_status_t res = drmodtrack_lookup_data(drcontext, start_pc, &mod_id, &mod_start, &mod_entry);
++        if (res == DRCOVLIB_SUCCESS)
 +        {
-+            edge_coverage = true;
++            mod_name = dr_module_preferred_name(mod_entry->data);
++            if (strcasecmp(mod_name, target_module) == 0)
++            {
++                edge_coverage = true;
++            }
 +        }
 +    }
 +
@@ -291,7 +294,7 @@
  static void
  event_thread_exit(void *drcontext)
  {
-@@ -388,6 +595,10 @@
+@@ -388,6 +598,10 @@
          /* the per-thread data is a copy of global data */
          dr_thread_free(drcontext, data, sizeof(*data));
      }
@@ -302,7 +305,7 @@
  }
  
  static void
-@@ -433,6 +644,11 @@
+@@ -433,6 +647,11 @@
      else
          data = thread_data_copy(drcontext);
      drmgr_set_tls_field(drcontext, tls_idx, data);
@@ -314,7 +317,7 @@
  }
  
  #ifndef WINDOWS
-@@ -505,6 +721,11 @@
+@@ -505,6 +724,11 @@
  
      drmgr_unregister_tls_field(tls_idx);
  
@@ -326,7 +329,7 @@
      drx_exit();
      drmgr_exit();
  
-@@ -565,6 +786,22 @@
+@@ -565,6 +789,22 @@
      drmgr_init();
      drx_init();
  
@@ -349,7 +352,7 @@
      /* We follow a simple model of the caller requesting the coverage dump,
       * either via calling the exit routine, using its own soft_kills nudge, or
       * an explicit dump call for unusual cases.  This means that drx's
-@@ -575,7 +812,7 @@
+@@ -575,7 +815,7 @@
  
      drmgr_register_thread_init_event(event_thread_init);
      drmgr_register_thread_exit_event(event_thread_exit);
@@ -358,7 +361,7 @@
      dr_register_filter_syscall_event(event_filter_syscall);
      drmgr_register_pre_syscall_event(event_pre_syscall);
  #ifdef UNIX
-@@ -588,3 +825,85 @@
+@@ -588,3 +828,85 @@
  
      return event_init();
  }
