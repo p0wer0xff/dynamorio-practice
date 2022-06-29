@@ -1,4 +1,5 @@
 cmake
+gnupg2
 g++
 g++-multilib
 doxygen
