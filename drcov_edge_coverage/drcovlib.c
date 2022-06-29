@@ -240,8 +240,10 @@ dump_drcov_data(void *drcontext, per_thread_t *data)
     version_print(data->log);
 
     // Edge coverage - print hash to log
-    uint64_t hash = hash64(edge_coverage_area, EDGE_COVERAGE_MAP_SIZE);
-    dr_fprintf(data->log, "Edge Coverage Hash: %lx\n", hash);
+    if (target_module != NULL) {
+        uint64_t hash = hash64(edge_coverage_area, EDGE_COVERAGE_MAP_SIZE);
+        dr_fprintf(data->log, "Edge Coverage Hash: %lx\n", hash);
+    }
 
     drmodtrack_dump(data->log);
     bb_table_print(drcontext, data);
